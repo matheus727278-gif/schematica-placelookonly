@@ -18,6 +18,15 @@ jobs:
           distribution: temurin
           java-version: '8'
 
+      - name: Clone LunatriusCore source
+        run: git clone https://github.com/Lunatrius/LunatriusCore.git lunatriuscore-src
+
+      - name: Build LunatriusCore with Gradle
+        working-directory: lunatriuscore-src
+        run: |
+          chmod +x gradlew
+          ./gradlew build --no-daemon
+
       - name: Clone Schematica source
         run: git clone https://github.com/Lunatrius/Schematica.git schematica-src
 
@@ -28,14 +37,17 @@ jobs:
 
       # The original build.gradle points at http://mc.lunatri.us/files for the
       # LunatriusCore dependency, and that server is dead (522 from Cloudflare).
-      # Work around it by dropping in the jar directly (same one already
-      # installed in the local mods folder) via a flatDir repo instead.
+      # Work around it by building LunatriusCore ourselves from source (previous
+      # step) and wiring it in as a local flatDir repo instead, renamed to the
+      # exact coordinate Schematica's build.gradle expects.
       - name: Work around dead LunatriusCore ivy repo
         run: |
           mkdir -p schematica-src/libs
-          cp LunatriusCore-1.12.2-1.2.0.42-universal.jar schematica-src/libs/
+          BUILT_JAR=$(ls lunatriuscore-src/build/libs/*-universal.jar | head -n1)
+          echo "Built LunatriusCore jar: $BUILT_JAR"
+          cp "$BUILT_JAR" schematica-src/libs/LunatriusCore-1.12.2-1.2.0.42-universal.jar
+
           python3 - <<'EOF'
-          import re
           path = "schematica-src/build.gradle"
           with open(path) as f:
               content = f.read()
@@ -61,7 +73,7 @@ jobs:
           print("Patched build.gradle to use local libs/ flatDir repo instead of the dead ivy repo.")
           EOF
 
-      - name: Build with Gradle
+      - name: Build Schematica with Gradle
         working-directory: schematica-src
         run: |
           chmod +x gradlew
