@@ -40,6 +40,13 @@ jobs:
       # Work around it by building LunatriusCore ourselves from source (previous
       # step) and wiring it in as a local flatDir repo instead, renamed to the
       # exact coordinate Schematica's build.gradle expects.
+      #
+      # Also: our LunatriusCore jar comes straight out of `gradlew build`, which
+      # is already in MCP/dev-name form (not SRG-obfuscated), so using
+      # `deobfCompile` on it makes ForgeGradle try to deobfuscate an
+      # already-deobfuscated jar, corrupting field/method resolution (this is
+      # what caused the "x/y/z has private access in Vec3i" compile errors).
+      # Switch that dependency to a plain `compile` so no translation happens.
       - name: Work around dead LunatriusCore ivy repo
         run: |
           mkdir -p schematica-src/libs
@@ -52,25 +59,32 @@ jobs:
           with open(path) as f:
               content = f.read()
 
-          old = """repositories {
+          old_repo = """repositories {
               ivy {
                   name = 'lunatrius\\' ivy repo'
                   url 'http://mc.lunatri.us/files'
               }
           }"""
-          new = """repositories {
+          new_repo = """repositories {
               flatDir {
                   dirs 'libs'
               }
           }"""
 
-          if old not in content:
+          if old_repo not in content:
               raise SystemExit("Could not find the ivy repo block to replace - build.gradle may have changed upstream.")
+          content = content.replace(old_repo, new_repo)
 
-          content = content.replace(old, new)
+          old_dep = "deobfCompile group: group, name: 'LunatriusCore', version: \"${project.version_minecraft}-${project.version_lunatriuscore}\", classifier: 'universal'"
+          new_dep = "compile group: group, name: 'LunatriusCore', version: \"${project.version_minecraft}-${project.version_lunatriuscore}\", classifier: 'universal'"
+
+          if old_dep not in content:
+              raise SystemExit("Could not find the LunatriusCore dependency line to replace - build.gradle may have changed upstream.")
+          content = content.replace(old_dep, new_dep)
+
           with open(path, "w") as f:
               f.write(content)
-          print("Patched build.gradle to use local libs/ flatDir repo instead of the dead ivy repo.")
+          print("Patched build.gradle: local libs/ flatDir repo + plain compile (no deobf) for LunatriusCore.")
           EOF
 
       - name: Build Schematica with Gradle
