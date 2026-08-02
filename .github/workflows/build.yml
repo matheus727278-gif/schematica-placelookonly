@@ -26,6 +26,41 @@ jobs:
           cp SchematicPrinter.java schematica-src/src/main/java/com/github/lunatrius/schematica/client/printer/SchematicPrinter.java
           cp ConfigurationHandler.java schematica-src/src/main/java/com/github/lunatrius/schematica/handler/ConfigurationHandler.java
 
+      # The original build.gradle points at http://mc.lunatri.us/files for the
+      # LunatriusCore dependency, and that server is dead (522 from Cloudflare).
+      # Work around it by dropping in the jar directly (same one already
+      # installed in the local mods folder) via a flatDir repo instead.
+      - name: Work around dead LunatriusCore ivy repo
+        run: |
+          mkdir -p schematica-src/libs
+          cp LunatriusCore-1.12.2-1.2.0.42-universal.jar schematica-src/libs/
+          python3 - <<'EOF'
+          import re
+          path = "schematica-src/build.gradle"
+          with open(path) as f:
+              content = f.read()
+
+          old = """repositories {
+              ivy {
+                  name = 'lunatrius\\' ivy repo'
+                  url 'http://mc.lunatri.us/files'
+              }
+          }"""
+          new = """repositories {
+              flatDir {
+                  dirs 'libs'
+              }
+          }"""
+
+          if old not in content:
+              raise SystemExit("Could not find the ivy repo block to replace - build.gradle may have changed upstream.")
+
+          content = content.replace(old, new)
+          with open(path, "w") as f:
+              f.write(content)
+          print("Patched build.gradle to use local libs/ flatDir repo instead of the dead ivy repo.")
+          EOF
+
       - name: Build with Gradle
         working-directory: schematica-src
         run: |
