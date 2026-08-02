@@ -21,11 +21,19 @@ jobs:
       - name: Clone LunatriusCore source
         run: git clone https://github.com/Lunatrius/LunatriusCore.git lunatriuscore-src
 
-      - name: Build LunatriusCore with Gradle
+      # IMPORTANT: skip reobfJar. ForgeGradle's reobfuscation step (SpecialSource)
+      # matches fields by name across the class hierarchy, and MBlockPos declares
+      # its own PUBLIC int x/y/z fields that happen to share names with the
+      # PRIVATE x/y/z fields it inherits from Minecraft's Vec3i. Reobfuscating
+      # corrupts MBlockPos's own fields (they end up resolving back to Vec3i's
+      # private ones), which is exactly what caused the previous
+      # "x/y/z has private access in Vec3i" compile errors downstream in
+      # Schematica. Building the plain dev/MCP-named jar avoids that entirely.
+      - name: Build LunatriusCore with Gradle (skip reobf)
         working-directory: lunatriuscore-src
         run: |
           chmod +x gradlew
-          ./gradlew build --no-daemon
+          ./gradlew jar -x reobfJar --no-daemon
 
       - name: Clone Schematica source
         run: git clone https://github.com/Lunatrius/Schematica.git schematica-src
@@ -37,16 +45,9 @@ jobs:
 
       # The original build.gradle points at http://mc.lunatri.us/files for the
       # LunatriusCore dependency, and that server is dead (522 from Cloudflare).
-      # Work around it by building LunatriusCore ourselves from source (previous
-      # step) and wiring it in as a local flatDir repo instead, renamed to the
-      # exact coordinate Schematica's build.gradle expects.
-      #
-      # Also: our LunatriusCore jar comes straight out of `gradlew build`, which
-      # is already in MCP/dev-name form (not SRG-obfuscated), so using
-      # `deobfCompile` on it makes ForgeGradle try to deobfuscate an
-      # already-deobfuscated jar, corrupting field/method resolution (this is
-      # what caused the "x/y/z has private access in Vec3i" compile errors).
-      # Switch that dependency to a plain `compile` so no translation happens.
+      # Work around it with a local flatDir repo instead, using the non-reobfed
+      # jar built above, and a plain `compile` dependency (not `deobfCompile`,
+      # since this jar is already in dev/MCP-name form, not SRG-obfuscated).
       - name: Work around dead LunatriusCore ivy repo
         run: |
           mkdir -p schematica-src/libs
