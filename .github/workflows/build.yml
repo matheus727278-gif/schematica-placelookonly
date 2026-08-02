@@ -1,0 +1,39 @@
+name: Build modified Schematica
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, master ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout this repo (contains the patched files)
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 8
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '8'
+
+      - name: Clone Schematica source
+        run: git clone https://github.com/Lunatrius/Schematica.git schematica-src
+
+      - name: Apply patched files
+        run: |
+          cp SchematicPrinter.java schematica-src/src/main/java/com/github/lunatrius/schematica/client/printer/SchematicPrinter.java
+          cp ConfigurationHandler.java schematica-src/src/main/java/com/github/lunatrius/schematica/handler/ConfigurationHandler.java
+
+      - name: Build with Gradle
+        working-directory: schematica-src
+        run: |
+          chmod +x gradlew
+          ./gradlew build --no-daemon
+
+      - name: Upload built jar
+        uses: actions/upload-artifact@v4
+        with:
+          name: schematica-placeLookOnly
+          path: schematica-src/build/libs/*.jar
